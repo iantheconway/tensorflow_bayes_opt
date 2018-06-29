@@ -15,6 +15,7 @@ INT_PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_h
 class MNISTClassifier(object):
     """Classifies MNSIT data set using a CNN. Based on the tutorial at:
      https://www.tensorflow.org/versions/r1.2/get_started/mnist/pros"""
+
     def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5):
         """Initialize computational graph for CNN.
         args:
@@ -24,7 +25,7 @@ class MNISTClassifier(object):
             filter_2_height: height of filter for second conv layer
 
         """
-        self.best_error = np.inf
+        self.best_accuracy = np.inf
         self.x = tf.placeholder(tf.float32, shape=[None, 784])
         self.y_ = tf.placeholder(tf.float32, shape=[None, 10])
 
@@ -91,39 +92,45 @@ class MNISTClassifier(object):
             sess.run(tf.global_variables_initializer())
             for i in range(iters):
                 batch = mnist.train.next_batch(50)
-                if i % 1 == 0:
+                if i % 100 == 0:
                     train_accuracy = self.accuracy.eval(feed_dict={
                         self.x: batch[0], self.y_: batch[1], self.keep_prob: 1.0})
                     print('step %d, training accuracy %g' % (i, train_accuracy))
                 self.train_step.run(feed_dict={self.x: batch[0], self.y_: batch[1], self.keep_prob: 0.5})
-                test_error = self.accuracy.eval(
+                test_accuracy = self.accuracy.eval(
                     feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels, self.keep_prob: 1.0})
-                if test_error < self.best_error:
-                    self.best_error = test_error
+                if test_accuracy < self.best_accuracy:
+                    self.best_accuracy = test_accuracy
 
 
 def gpyopt_helper(x):
+    """Objective function for GPyOpt.
+    args:
+        x: a 2D numpy array containing hyperparameters for the current acquisition
+    returns:
+        Error: The best test error for the training run."""
     params = {}
     for param, value in zip(PARAMS, x[0]):
         if param in INT_PARAMS:
             value = int(value)
         params[param] = value
     mc = MNISTClassifier(**params)
-    mc.train(5)
-    print "Params: {}".format(params)
-    print "Error: {}".format(mc.best_error)
-    return np.array([[mc.best_error]])
+    mc.train(5000)
+    # Convert accuracy to error
+    error = 1 - mc.best_accuracy
+    return np.array([[1 - mc.best_accuracy]])
 
 
 def bayes_opt():
-    bounds = [{'name': 'filter_1_width', 'type': 'discrete', 'domain': (3, 7)},
-              {'name': 'filter_1_height', 'type': 'discrete', 'domain': (3, 7)},
-              {'name': 'filter_2_width', 'type': 'discrete', 'domain': (3, 7)},
-              {'name': 'filter_2_height', 'type': 'discrete', 'domain': (3, 7)},
+    """Run bayesian optimization on the MNIST Classifier using GPyOpt"""
+    bounds = [{'name': 'filter_1_width', 'type': 'discrete', 'domain': range(3, 7)},
+              {'name': 'filter_1_height', 'type': 'discrete', 'domain': range(3, 7)},
+              {'name': 'filter_2_width', 'type': 'discrete', 'domain': range(3, 7)},
+              {'name': 'filter_2_height', 'type': 'discrete', 'domain': range(3, 7)},
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
     myProblem.run_optimization(10)
-
+    myProblem.save_evaluations("ev_file")
 
 
 if __name__ == "__main__":
