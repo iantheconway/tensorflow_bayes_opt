@@ -25,16 +25,17 @@ class MNISTClassifier(object):
             filter_2_height: height of filter for second conv layer
 
         """
+        tf.reset_default_graph()
         self.best_accuracy = np.inf
-        self.x = tf.placeholder(tf.float32, shape=[None, 784])
-        self.y_ = tf.placeholder(tf.float32, shape=[None, 10])
+        self.x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
+        self.y_ = tf.placeholder(tf.float32, shape=[None, 10], name="y_")
 
         self.W_conv1 = self.weight_variable([filter_1_height, filter_1_width, 1, 32])
         self.b_conv1 = self.bias_variable([32])
 
-        self.x_image = tf.reshape(self.x, [-1, 28, 28, 1])
+        self.x_image = tf.reshape(self.x, [-1, 28, 28, 1], name="x_image")
 
-        self.h_conv1 = tf.nn.relu(self.conv2d(self.x_image, self.W_conv1) + self.b_conv1)
+        self.h_conv1 = tf.nn.relu(self.conv2d(self.x_image, self.W_conv1) + self.b_conv1, name="h_conv1")
         self.h_pool1 = self.max_pool_2x2(self.h_conv1)
 
         self.W_conv2 = self.weight_variable([filter_2_height, filter_2_width, 32, 64])
@@ -46,11 +47,11 @@ class MNISTClassifier(object):
         self.W_fc1 = self.weight_variable([7 * 7 * 64, 1024])
         self.b_fc1 = self.bias_variable([1024])
 
-        self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, 7 * 7 * 64])
-        self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1)
+        self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, 7 * 7 * 64], name="h_pool2_flat")
+        self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1, name="h_fc1")
 
-        self.keep_prob = tf.placeholder(tf.float32)
-        self.h_fc1_drop = tf.nn.dropout(self.h_fc1, self.keep_prob)
+        self.keep_prob = tf.placeholder(tf.float32, name="keep_prob")
+        self.h_fc1_drop = tf.nn.dropout(self.h_fc1, self.keep_prob, name="dropout")
 
         self.W_fc2 = self.weight_variable([1024, 10])
         self.b_fc2 = self.bias_variable([10])
@@ -58,10 +59,18 @@ class MNISTClassifier(object):
         self.y_conv = tf.matmul(self.h_fc1_drop, self.W_fc2) + self.b_fc2
 
         self.cross_entropy = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.y_conv))
+            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.y_conv), name="cross_entropy")
         self.train_step = tf.train.AdamOptimizer(1e-4).minimize(self.cross_entropy)
-        self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1))
-        self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32))
+        self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1), name="correct_prediction")
+        self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32), name="accuracy")
+        # for Tensorboard
+        tf.summary.scalar('Train_Loss', self.cross_entropy)
+        tf.summary.scalar('Test_Accuracy', self.accuracy)
+        tf.summary.scalar('Test_Loss', tf.subtract(tf.constant(1.), self.accuracy))
+        self.merged_summary_op = tf.summary.merge_all()
+        self.summary_writer = tf.summary.FileWriter('./logs', tf.get_default_graph())
+
+
 
     def weight_variable(self, shape):
         """Helper function which returns a truncated normal tf variable of a given shape.
@@ -87,18 +96,20 @@ class MNISTClassifier(object):
                               strides=[1, 2, 2, 1], padding='SAME')
 
     def train(self, iters):
-        """Helper function"""
-        with tf.Session() as sess:
+        """Training function"""
+        with tf.Session(graph=tf.get_default_graph()) as sess:
+            # initialize variables
             sess.run(tf.global_variables_initializer())
             for i in range(iters):
                 batch = mnist.train.next_batch(50)
-                if i % 100 == 0:
-                    train_accuracy = self.accuracy.eval(feed_dict={
+                if i % 1 == 0:
+                    train_accuracy = sess.run(self.accuracy, feed_dict={
                         self.x: batch[0], self.y_: batch[1], self.keep_prob: 1.0})
                     print('step %d, training accuracy %g' % (i, train_accuracy))
-                self.train_step.run(feed_dict={self.x: batch[0], self.y_: batch[1], self.keep_prob: 0.5})
-                test_accuracy = self.accuracy.eval(
+                sess.run(self.train_step, feed_dict={self.x: batch[0], self.y_: batch[1], self.keep_prob: 0.5})
+                test_accuracy, summary = sess.run([self.accuracy, self.merged_summary_op],
                     feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels, self.keep_prob: 1.0})
+                self.summary_writer.add_summary(summary, i)
                 if test_accuracy < self.best_accuracy:
                     self.best_accuracy = test_accuracy
 
@@ -115,7 +126,7 @@ def gpyopt_helper(x):
             value = int(value)
         params[param] = value
     mc = MNISTClassifier(**params)
-    mc.train(5000)
+    mc.train(10000)
     # Convert accuracy to error
     error = 1 - mc.best_accuracy
     return np.array([[1 - mc.best_accuracy]])
