@@ -3,6 +3,7 @@
 import tensorflow as tf
 import GPyOpt
 import numpy as np
+import os
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -25,7 +26,15 @@ class MNISTClassifier(object):
             filter_2_height: height of filter for second conv layer
 
         """
+        # dynamically create experiment name from function arguments
+        self.experiment_name = ""
+        for key, value in locals().iteritems():
+            if key != "self":
+                self.experiment_name += "{}_{}_".format(key, value)
+        self.experiment_name = self.experiment_name[:-1]
+        # keep experiments in separate graphs.
         tf.reset_default_graph()
+        self.sess = tf.Session()
         self.best_accuracy = np.inf
         self.x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
         self.y_ = tf.placeholder(tf.float32, shape=[None, 10], name="y_")
@@ -61,16 +70,22 @@ class MNISTClassifier(object):
         self.cross_entropy = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.y_conv), name="cross_entropy")
         self.train_step = tf.train.AdamOptimizer(1e-4).minimize(self.cross_entropy)
-        self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1), name="correct_prediction")
+        self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1),
+                                           name="correct_prediction")
         self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32), name="accuracy")
         # for Tensorboard
-        tf.summary.scalar('Train_Loss', self.cross_entropy)
-        tf.summary.scalar('Test_Accuracy', self.accuracy)
-        tf.summary.scalar('Test_Loss', tf.subtract(tf.constant(1.), self.accuracy))
+        self.train_acc_val = np.array([0])
+        self.test_acc_val = np.array([0])
+        self.train_accuracy = tf.placeholder("float", shape=[1], name="train_accuracy")
+        self.test_accuracy = tf.placeholder("float", shape=[1], name="test_accuracy")
+        tf.summary.scalar('Train_accuracy', tf.reduce_sum(self.train_accuracy))
+        tf.summary.scalar('Test_Accuracy', tf.reduce_sum(self.test_accuracy))
         self.merged_summary_op = tf.summary.merge_all()
-        self.summary_writer = tf.summary.FileWriter('./logs', tf.get_default_graph())
 
-
+        self.summary_writer = tf.summary.FileWriter(os.path.join(os.getcwd(), 'logs', self.experiment_name),
+                                                    graph=self.sess.graph)
+        # initialize variables
+        self.sess.run(tf.global_variables_initializer())
 
     def weight_variable(self, shape):
         """Helper function which returns a truncated normal tf variable of a given shape.
@@ -97,21 +112,28 @@ class MNISTClassifier(object):
 
     def train(self, iters):
         """Training function"""
-        with tf.Session(graph=tf.get_default_graph()) as sess:
-            # initialize variables
-            sess.run(tf.global_variables_initializer())
-            for i in range(iters):
-                batch = mnist.train.next_batch(50)
-                if i % 1 == 0:
-                    train_accuracy = sess.run(self.accuracy, feed_dict={
-                        self.x: batch[0], self.y_: batch[1], self.keep_prob: 1.0})
-                    print('step %d, training accuracy %g' % (i, train_accuracy))
-                sess.run(self.train_step, feed_dict={self.x: batch[0], self.y_: batch[1], self.keep_prob: 0.5})
-                test_accuracy, summary = sess.run([self.accuracy, self.merged_summary_op],
-                    feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels, self.keep_prob: 1.0})
-                self.summary_writer.add_summary(summary, i)
-                if test_accuracy < self.best_accuracy:
-                    self.best_accuracy = test_accuracy
+        for i in range(iters):
+            batch = mnist.train.next_batch(50)
+            if i % 1 == 0:
+                train_accuracy = self.sess.run(self.accuracy, feed_dict={self.x: batch[0], self.y_: batch[1],
+                                                                         self.keep_prob: 1.0
+                                                                         })
+                self.train_acc_val = np.array([train_accuracy])
+                print('step %d, training accuracy %g' % (i, train_accuracy))
+
+            _, summary = self.sess.run([self.train_step, self.merged_summary_op],
+                                       feed_dict={self.x: batch[0], self.y_: batch[1],
+                                                  self.keep_prob: 0.5, self.test_accuracy: self.test_acc_val,
+                                                  self.train_accuracy: self.test_acc_val
+                                                  })
+            self.summary_writer.add_summary(summary, i)
+            test_accuracy = self.sess.run(self.accuracy,
+                                          feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels,
+                                                     self.keep_prob: 1.0})
+            self.test_acc_val = np.array([test_accuracy])
+
+            if test_accuracy < self.best_accuracy:
+                self.best_accuracy = test_accuracy
 
 
 def gpyopt_helper(x):
@@ -129,7 +151,7 @@ def gpyopt_helper(x):
     mc.train(10000)
     # Convert accuracy to error
     error = 1 - mc.best_accuracy
-    return np.array([[1 - mc.best_accuracy]])
+    return np.array([[error]])
 
 
 def bayes_opt():
