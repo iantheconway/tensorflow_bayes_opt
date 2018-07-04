@@ -159,7 +159,7 @@ def bayes_opt():
               {'name': 'n_hidden_dense_1', 'type': 'discrete', 'domain': range(512, 1024)},
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
-    myProblem.run_optimization(10)
+    myProblem.run_optimization(100)
     myProblem.save_evaluations("ev_file")
 
 
