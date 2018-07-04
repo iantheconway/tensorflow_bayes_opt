@@ -9,7 +9,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
-PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height"]
+PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height", "learning_rate"]
 INT_PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height"]
 
 
@@ -17,7 +17,7 @@ class MNISTClassifier(object):
     """Classifies MNSIT data set using a CNN. Based on the tutorial at:
      https://www.tensorflow.org/versions/r1.2/get_started/mnist/pros"""
 
-    def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5):
+    def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5, learning_rate=1e-4):
         """Initialize computational graph for CNN.
         args:
             filter_1_width: width of filter for first conv layer
@@ -69,7 +69,7 @@ class MNISTClassifier(object):
 
         self.cross_entropy = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.y_conv), name="cross_entropy")
-        self.train_step = tf.train.AdamOptimizer(1e-4).minimize(self.cross_entropy)
+        self.train_step = tf.train.AdamOptimizer(learning_rate).minimize(self.cross_entropy)
         self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1),
                                            name="correct_prediction")
         self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32), name="accuracy")
@@ -160,6 +160,7 @@ def bayes_opt():
               {'name': 'filter_1_height', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_width', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_height', 'type': 'discrete', 'domain': range(3, 7)},
+              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.2)}
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
     myProblem.run_optimization(10)
