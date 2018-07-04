@@ -141,7 +141,7 @@ def gpyopt_helper(x):
             value = int(value)
         params[param] = value
     mc = MNISTClassifier(**params)
-    mc.train(2)
+    mc.train(5000)
     # Convert accuracy to error
     error = 1 - mc.best_accuracy
     return np.array([[error]])
