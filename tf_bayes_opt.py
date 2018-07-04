@@ -10,9 +10,9 @@ from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
 PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height", "learning_rate", "n_filters_conv1",
-          "n_filters_conv2", "n_hidden_dense_1"]
+          "n_filters_conv2", "n_hidden_dense_1", "batch_size"]
 INT_PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height", "n_filters_conv1",
-              "n_filters_conv2", "n_hidden_dense_1"]
+              "n_filters_conv2", "n_hidden_dense_1", "batch_size"]
 
 
 class MNISTClassifier(object):
@@ -20,7 +20,7 @@ class MNISTClassifier(object):
      https://www.tensorflow.org/tutorials/layers"""
 
     def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5, learning_rate=1e-4,
-                 n_filters_conv1=32, n_filters_conv2=64, n_hidden_dense_1=1024):
+                 n_filters_conv1=32, n_filters_conv2=64, n_hidden_dense_1=1024, batch_size=50):
         """Initialize computational graph for CNN.
         args:
             filter_1_width: width of filter for first conv layer
@@ -39,6 +39,7 @@ class MNISTClassifier(object):
         # keep experiments in separate graphs.
         tf.reset_default_graph()
         self.sess = tf.Session()
+        self.batch_size = batch_size
         self.best_accuracy = np.inf
 
         self.x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
@@ -107,7 +108,7 @@ class MNISTClassifier(object):
     def train(self, iters):
         """Training function"""
         for i in range(iters):
-            batch = mnist.train.next_batch(50)
+            batch = mnist.train.next_batch(self.batch_size)
 
 
             _, summary, train_accuracy = self.sess.run([self.train_step, self.merged_summary_op, self.accuracy],
@@ -155,6 +156,7 @@ def bayes_opt():
               {'name': 'n_filters_conv1', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_filters_conv2', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_hidden_dense_1', 'type': 'discrete', 'domain': range(512, 1024)},
+              {'name': 'batch_size', 'type': 'discrete', 'domain': range(32, 512)},
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
     myProblem.run_optimization(100)
