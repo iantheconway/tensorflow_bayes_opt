@@ -9,15 +9,18 @@ from tensorflow.examples.tutorials.mnist import input_data
 
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
-PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height"]
-INT_PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height"]
+PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height", "learning_rate", "n_filters_conv1",
+          "n_filters_conv2", "n_hidden_dense_1"]
+INT_PARAMS = ["filter_1_width", "filter_1_height", "filter_2_width", "filter_2_height", "n_filters_conv1",
+              "n_filters_conv2", "n_hidden_dense_1"]
 
 
 class MNISTClassifier(object):
     """Classifies MNSIT data set using a CNN. Based on the tutorial at:
-     https://www.tensorflow.org/versions/r1.2/get_started/mnist/pros"""
+     https://www.tensorflow.org/tutorials/layers"""
 
-    def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5):
+    def __init__(self, filter_1_width=5, filter_1_height=5, filter_2_width=5, filter_2_height=5, learning_rate=1e-4,
+                 n_filters_conv1=32, n_filters_conv2=64, n_hidden_dense_1=1024):
         """Initialize computational graph for CNN.
         args:
             filter_1_width: width of filter for first conv layer
@@ -32,45 +35,59 @@ class MNISTClassifier(object):
             if key != "self":
                 self.experiment_name += "{}_{}_".format(key, value)
         self.experiment_name = self.experiment_name[:-1]
+        print self.experiment_name
         # keep experiments in separate graphs.
         tf.reset_default_graph()
         self.sess = tf.Session()
         self.best_accuracy = np.inf
+
         self.x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
         self.y_ = tf.placeholder(tf.float32, shape=[None, 10], name="y_")
-
-        self.W_conv1 = self.weight_variable([filter_1_height, filter_1_width, 1, 32])
-        self.b_conv1 = self.bias_variable([32])
-
+        self.keep_prob = tf.placeholder(tf.float32, name="keep_prob")
+        self.is_training = tf.placeholder(tf.bool, name="keep_prob")
         self.x_image = tf.reshape(self.x, [-1, 28, 28, 1], name="x_image")
 
-        self.h_conv1 = tf.nn.relu(self.conv2d(self.x_image, self.W_conv1) + self.b_conv1, name="h_conv1")
-        self.h_pool1 = self.max_pool_2x2(self.h_conv1)
+        # Convolutional Layer #1
+        self.conv1 = tf.layers.conv2d(
+            inputs=self.x_image,
+            filters=n_filters_conv1,
+            kernel_size=[filter_1_width, filter_1_height],
+            padding="same",
+            activation=tf.nn.relu)
 
-        self.W_conv2 = self.weight_variable([filter_2_height, filter_2_width, 32, 64])
-        self.b_conv2 = self.bias_variable([64])
+        # Pooling Layer #1
+        self.pool1 = tf.layers.max_pooling2d(inputs=self.conv1, pool_size=[2, 2], strides=2)
 
-        self.h_conv2 = tf.nn.relu(self.conv2d(self.h_pool1, self.W_conv2) + self.b_conv2)
-        self.h_pool2 = self.max_pool_2x2(self.h_conv2)
+        # Convolutional Layer #2 and Pooling Layer #2
+        self.conv2 = tf.layers.conv2d(
+            inputs=self.pool1,
+            filters=n_filters_conv2,
+            kernel_size=[filter_2_width, filter_2_height],
+            padding="same",
+            activation=tf.nn.relu)
+        self.pool2 = tf.layers.max_pooling2d(inputs=self.conv2, pool_size=[2, 2], strides=2)
 
-        self.W_fc1 = self.weight_variable([7 * 7 * 64, 1024])
-        self.b_fc1 = self.bias_variable([1024])
+        # Dense Layer
+        self.pool2_flat = tf.reshape(self.pool2, [-1, 7 * 7 * n_filters_conv2])
+        self.dense = tf.layers.dense(inputs=self.pool2_flat, units=n_hidden_dense_1, activation=tf.nn.relu)
+        self.dropout = tf.layers.dropout(
+            inputs=self.dense, rate=self.keep_prob, training=self.is_training == tf.estimator.ModeKeys.TRAIN)
 
-        self.h_pool2_flat = tf.reshape(self.h_pool2, [-1, 7 * 7 * 64], name="h_pool2_flat")
-        self.h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, self.W_fc1) + self.b_fc1, name="h_fc1")
+        # Logits Layer
+        self.logits = tf.layers.dense(inputs=self.dropout, units=10)
 
-        self.keep_prob = tf.placeholder(tf.float32, name="keep_prob")
-        self.h_fc1_drop = tf.nn.dropout(self.h_fc1, self.keep_prob, name="dropout")
-
-        self.W_fc2 = self.weight_variable([1024, 10])
-        self.b_fc2 = self.bias_variable([10])
-
-        self.y_conv = tf.matmul(self.h_fc1_drop, self.W_fc2) + self.b_fc2
+        predictions = {
+            # Generate predictions (for PREDICT and EVAL mode)
+            "classes": tf.argmax(input=self.logits, axis=1),
+            # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
+            # `logging_hook`.
+            "probabilities": tf.nn.softmax(self.logits, name="softmax_tensor")
+        }
 
         self.cross_entropy = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.y_conv), name="cross_entropy")
-        self.train_step = tf.train.AdamOptimizer(1e-4).minimize(self.cross_entropy)
-        self.correct_prediction = tf.equal(tf.argmax(self.y_conv, 1), tf.argmax(self.y_, 1),
+            tf.nn.softmax_cross_entropy_with_logits(labels=self.y_, logits=self.logits), name="cross_entropy")
+        self.train_step = tf.train.AdamOptimizer(learning_rate).minimize(self.cross_entropy)
+        self.correct_prediction = tf.equal(tf.argmax(self.logits, 1), tf.argmax(self.y_, 1),
                                            name="correct_prediction")
         self.accuracy = tf.reduce_mean(tf.cast(self.correct_prediction, tf.float32), name="accuracy")
         # for Tensorboard
@@ -87,29 +104,6 @@ class MNISTClassifier(object):
         # initialize variables
         self.sess.run(tf.global_variables_initializer())
 
-    def weight_variable(self, shape):
-        """Helper function which returns a truncated normal tf variable of a given shape.
-        args:
-            shape: the shape of the variable tensor to be returned
-        """
-        initial = tf.truncated_normal(shape, stddev=0.1)
-        return tf.Variable(initial)
-
-    def bias_variable(self, shape, bias=0.1):
-        """Helper function which returns a tensor of a given value and shape.
-            args:
-                shape: the shape of the variable tensor to be returned
-        """
-        initial = tf.constant(bias, shape=shape)
-        return tf.Variable(initial)
-
-    def conv2d(self, x, W):
-        return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
-
-    def max_pool_2x2(self, x):
-        return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                              strides=[1, 2, 2, 1], padding='SAME')
-
     def train(self, iters):
         """Training function"""
         for i in range(iters):
@@ -124,14 +118,13 @@ class MNISTClassifier(object):
             _, summary = self.sess.run([self.train_step, self.merged_summary_op],
                                        feed_dict={self.x: batch[0], self.y_: batch[1],
                                                   self.keep_prob: 0.5, self.test_accuracy: self.test_acc_val,
-                                                  self.train_accuracy: self.test_acc_val
+                                                  self.train_accuracy: self.test_acc_val, self.is_training: True
                                                   })
             self.summary_writer.add_summary(summary, i)
             test_accuracy = self.sess.run(self.accuracy,
                                           feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels,
-                                                     self.keep_prob: 1.0})
+                                                     self.keep_prob: 1.0, self.is_training: False})
             self.test_acc_val = np.array([test_accuracy])
-
             if test_accuracy < self.best_accuracy:
                 self.best_accuracy = test_accuracy
 
@@ -148,7 +141,7 @@ def gpyopt_helper(x):
             value = int(value)
         params[param] = value
     mc = MNISTClassifier(**params)
-    mc.train(10000)
+    mc.train(2)
     # Convert accuracy to error
     error = 1 - mc.best_accuracy
     return np.array([[error]])
@@ -160,6 +153,10 @@ def bayes_opt():
               {'name': 'filter_1_height', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_width', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_height', 'type': 'discrete', 'domain': range(3, 7)},
+              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.2)},
+              {'name': 'n_filters_conv1', 'type': 'discrete', 'domain': range(32, 128)},
+              {'name': 'n_filters_conv2', 'type': 'discrete', 'domain': range(32, 128)},
+              {'name': 'n_hidden_dense_1', 'type': 'discrete', 'domain': range(512, 1024)},
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
     myProblem.run_optimization(10)
