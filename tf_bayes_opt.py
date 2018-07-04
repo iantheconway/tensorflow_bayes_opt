@@ -108,19 +108,17 @@ class MNISTClassifier(object):
         """Training function"""
         for i in range(iters):
             batch = mnist.train.next_batch(50)
-            if i % 1 == 0:
-                train_accuracy = self.sess.run(self.accuracy, feed_dict={self.x: batch[0], self.y_: batch[1],
-                                                                         self.keep_prob: 1.0
-                                                                         })
-                self.train_acc_val = np.array([train_accuracy])
-                print('step %d, training accuracy %g' % (i, train_accuracy))
 
-            _, summary = self.sess.run([self.train_step, self.merged_summary_op],
+
+            _, summary, train_accuracy = self.sess.run([self.train_step, self.merged_summary_op, self.accuracy],
                                        feed_dict={self.x: batch[0], self.y_: batch[1],
                                                   self.keep_prob: 0.5, self.test_accuracy: self.test_acc_val,
                                                   self.train_accuracy: self.test_acc_val, self.is_training: True
                                                   })
+            self.train_acc_val = np.array([train_accuracy])
             self.summary_writer.add_summary(summary, i)
+            if i % 5 == 0:
+                print('step %d, training accuracy %g' % (i, train_accuracy))
             test_accuracy = self.sess.run(self.accuracy,
                                           feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels,
                                                      self.keep_prob: 1.0, self.is_training: False})
@@ -153,7 +151,7 @@ def bayes_opt():
               {'name': 'filter_1_height', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_width', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_height', 'type': 'discrete', 'domain': range(3, 7)},
-              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.2)},
+              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.1)},
               {'name': 'n_filters_conv1', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_filters_conv2', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_hidden_dense_1', 'type': 'discrete', 'domain': range(512, 1024)},
