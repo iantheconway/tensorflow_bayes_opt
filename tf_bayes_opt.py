@@ -124,7 +124,7 @@ class MNISTClassifier(object):
                                           feed_dict={self.x: mnist.test.images, self.y_: mnist.test.labels,
                                                      self.keep_prob: 1.0, self.is_training: False})
             self.test_acc_val = np.array([test_accuracy])
-            if test_accuracy < self.best_accuracy:
+            if test_accuracy > self.best_accuracy:
                 self.best_accuracy = test_accuracy
 
 
@@ -152,14 +152,14 @@ def bayes_opt():
               {'name': 'filter_1_height', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_width', 'type': 'discrete', 'domain': range(3, 7)},
               {'name': 'filter_2_height', 'type': 'discrete', 'domain': range(3, 7)},
-              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.1)},
+              {'name': 'learning_rate', 'type': 'continuous', 'domain': (0.000001, 0.02)},
               {'name': 'n_filters_conv1', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_filters_conv2', 'type': 'discrete', 'domain': range(32, 128)},
               {'name': 'n_hidden_dense_1', 'type': 'discrete', 'domain': range(512, 1024)},
               {'name': 'batch_size', 'type': 'discrete', 'domain': range(32, 512)},
               ]
     myProblem = GPyOpt.methods.BayesianOptimization(gpyopt_helper, bounds)
-    myProblem.run_optimization(100)
+    myProblem.run_optimization(50)
     myProblem.save_evaluations("ev_file")
 
 
