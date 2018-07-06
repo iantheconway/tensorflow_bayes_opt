@@ -40,7 +40,7 @@ class MNISTClassifier(object):
         tf.reset_default_graph()
         self.sess = tf.Session()
         self.batch_size = batch_size
-        self.best_accuracy = np.inf
+        self.best_accuracy = -np.inf
 
         self.x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
         self.y_ = tf.placeholder(tf.float32, shape=[None, 10], name="y_")
